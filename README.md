@@ -52,6 +52,19 @@ the runtime still requires Bun on the target machine.
 
 Once installed, the executable is `imessage-query`.
 
+## Agent Skill
+
+This repo also ships an installable agent skill at [skills/imessage-query/SKILL.md](/Users/eberry/Code/github.com/berrydev-ai/imessage-query/skills/imessage-query/SKILL.md).
+
+Install the skill with the `skills` CLI:
+
+```bash
+npx skills add berrydev-ai/imessage-query@imessage-query -g -y
+```
+
+The skill teaches an agent how to use the already-installed `imessage-query`
+CLI. It does not install the binary for you, so install the CLI first.
+
 ## Development
 
 Run the full local verification loop:
