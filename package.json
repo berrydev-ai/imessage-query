@@ -36,6 +36,7 @@
     "ci": "bun run check && bun test && bun run pack:dry-run",
     "test": "bun test",
     "check": "tsc --noEmit",
+    "release:prepare": "node scripts/release.mjs",
     "pack:dry-run": "npm pack --dry-run",
     "pack": "rm -rf dist && mkdir -p dist && npm pack --pack-destination dist"
   },

@@ -1,43 +1,32 @@
 name: Release
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
+    inputs:
+      bump:
+        description: Semantic version bump to apply
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      summary:
+        description: Optional release summary for CHANGELOG.md
+        required: false
+        type: string
 
 permissions:
   contents: write
-  issues: write
-  pull-requests: write
 
 jobs:
-  release-please:
+  release:
     runs-on: ubuntu-latest
-    outputs:
-      release_created: ${{ steps.release.outputs.release_created }}
-      tag_name: ${{ steps.release.outputs.tag_name }}
-
     steps:
-      - name: Run release-please
-        id: release
-        uses: googleapis/release-please-action@v4
-        with:
-          config-file: release-please-config.json
-          manifest-file: .release-please-manifest.json
-
-  package-release:
-    needs: release-please
-    if: ${{ needs.release-please.outputs.release_created == 'true' }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-      - name: Check out tagged release
+      - name: Check out repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.release-please.outputs.tag_name }}
+          fetch-depth: 0
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
@@ -50,10 +39,37 @@ jobs:
       - name: Verify release build
         run: bun run ci
 
+      - name: Configure git author
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump version and changelog
+        id: version
+        env:
+          RELEASE_BUMP: ${{ inputs.bump }}
+          RELEASE_SUMMARY: ${{ inputs.summary }}
+        run: |
+          npm version "$RELEASE_BUMP" --no-git-tag-version
+          version=$(node -e "console.log(JSON.parse(require('fs').readFileSync('package.json', 'utf8')).version)")
+          node scripts/release.mjs "$version" "$RELEASE_SUMMARY"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Commit and tag release
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git add package.json CHANGELOG.md
+          git commit -m "chore: release v$VERSION"
+          git tag "v$VERSION"
+          git push origin HEAD:main
+          git push origin "v$VERSION"
+
       - name: Build release package
         run: bun run pack
 
       - name: Attach package to GitHub release
-        run: gh release upload "${{ needs.release-please.outputs.tag_name }}" dist/*.tgz --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: gh release create "v$VERSION" dist/*.tgz --title "v$VERSION" --generate-notes

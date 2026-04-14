@@ -161,12 +161,22 @@ Versioning is managed with semantic versioning and Conventional Commits:
 - `feat:` bumps the minor version
 - `feat!:` or `BREAKING CHANGE:` bumps the major version
 
-Release management is automated:
+Release management is done with the `Release` GitHub Actions workflow:
 
-1. Merge conventional commits into `main`.
-2. GitHub Actions runs Release Please and opens or updates a release PR.
-3. Merge the release PR to update `package.json`, `CHANGELOG.md`, and create a Git tag and GitHub release.
-4. The release workflow builds `imessage-query-<version>.tgz` with `npm pack` and attaches it to the GitHub release.
+1. Open the `Release` workflow in GitHub Actions.
+2. Choose the semver bump: `patch`, `minor`, or `major`.
+3. Optionally provide a short release summary.
+4. Run the workflow.
+
+The workflow will:
+
+- verify the repo with `bun run ci`
+- bump `package.json`
+- prepend a dated entry in `CHANGELOG.md`
+- commit the version change to `main`
+- create a `vX.Y.Z` git tag
+- create a GitHub release
+- attach `imessage-query-<version>.tgz` built with `npm pack`
 
 You can install a pinned release from GitHub by tag:
 
