@@ -44,7 +44,7 @@ npm install -g github:berrydev-ai/imessage-query
 Install a tagged release:
 
 ```bash
-npm install -g github:berrydev-ai/imessage-query#v0.1.0
+npm install -g github:berrydev-ai/imessage-query#vX.Y.Z
 ```
 
 This project is Bun-only. `npm` can install the wrapper script from GitHub, but
@@ -155,11 +155,11 @@ IMESSAGE_QUERY_DB_PATH=/tmp/test-chat.db bun run src/cli.ts messages --json
 
 ## Release Workflow
 
-Versioning is managed with semantic versioning and Conventional Commits:
+Versioning uses semantic versioning:
 
-- `fix:` bumps the patch version
-- `feat:` bumps the minor version
-- `feat!:` or `BREAKING CHANGE:` bumps the major version
+- `patch` for fixes and small non-breaking updates
+- `minor` for new backward-compatible features
+- `major` for breaking changes
 
 Release management is done with the `Release` GitHub Actions workflow:
 
