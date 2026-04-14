@@ -41,10 +41,24 @@ Install from GitHub:
 npm install -g github:berrydev-ai/imessage-query
 ```
 
+Install a tagged release:
+
+```bash
+npm install -g github:berrydev-ai/imessage-query#v0.1.0
+```
+
 This project is Bun-only. `npm` can install the wrapper script from GitHub, but
 the runtime still requires Bun on the target machine.
 
 Once installed, the executable is `imessage-query`.
+
+## Development
+
+Run the full local verification loop:
+
+```bash
+bun run ci
+```
 
 ## Commands
 
@@ -124,4 +138,25 @@ For development and tests, you can point the CLI at a different SQLite file:
 
 ```bash
 IMESSAGE_QUERY_DB_PATH=/tmp/test-chat.db bun run src/cli.ts messages --json
+```
+
+## Release Workflow
+
+Versioning is managed with semantic versioning and Conventional Commits:
+
+- `fix:` bumps the patch version
+- `feat:` bumps the minor version
+- `feat!:` or `BREAKING CHANGE:` bumps the major version
+
+Release management is automated:
+
+1. Merge conventional commits into `main`.
+2. GitHub Actions runs Release Please and opens or updates a release PR.
+3. Merge the release PR to update `package.json`, `CHANGELOG.md`, and create a Git tag and GitHub release.
+4. The release workflow builds `imessage-query-<version>.tgz` with `npm pack` and attaches it to the GitHub release.
+
+You can install a pinned release from GitHub by tag:
+
+```bash
+npm install -g github:berrydev-ai/imessage-query#vX.Y.Z
 ```

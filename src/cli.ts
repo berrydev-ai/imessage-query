@@ -74,39 +74,125 @@ const TAIL_HELP = `Usage: imessage-query tail [--chat TEXT] [--chat-id TEXT] [--
 
 If --after-rowid is omitted, tail starts from the current end of the matching stream and emits only future messages.`;
 
-async function main(): Promise<void> {
-  const [command, ...args] = Bun.argv.slice(2);
+export type CliDependencies = {
+  inspectDatabase: typeof inspectDatabase;
+  listChats: typeof listChats;
+  searchMessages: typeof searchMessages;
+  formatChats: typeof formatChats;
+  formatDoctor: typeof formatDoctor;
+  formatMessages: typeof formatMessages;
+  formatTailBatch: typeof formatTailBatch;
+  formatTailDone: typeof formatTailDone;
+  formatTailReady: typeof formatTailReady;
+  pollTailBatch: typeof pollTailBatch;
+  resolveTailCursor: typeof resolveTailCursor;
+  sleep: (milliseconds: number) => Promise<void>;
+};
 
-  if (!command || command === "help" || command === "--help") {
-    console.log(HELP_TEXT);
-    return;
-  }
+export type CliIo = {
+  stdout: (text: string) => void;
+  stderr: (text: string) => void;
+};
 
-  switch (command) {
-    case "doctor":
-      handleDoctor(args);
-      return;
-    case "chats":
-      handleChats(args);
-      return;
-    case "messages":
-      handleMessages(args);
-      return;
-    case "tail":
-      await handleTail(args);
-      return;
-    default:
-      throw new UsageError(`Unknown command: ${command}`);
+export type RunCliOptions = {
+  deps?: Partial<CliDependencies>;
+  io?: Partial<CliIo>;
+};
+
+const defaultDependencies: CliDependencies = {
+  inspectDatabase,
+  listChats,
+  searchMessages,
+  formatChats,
+  formatDoctor,
+  formatMessages,
+  formatTailBatch,
+  formatTailDone,
+  formatTailReady,
+  pollTailBatch,
+  resolveTailCursor,
+  sleep: Bun.sleep,
+};
+
+const defaultIo: CliIo = {
+  stdout: (text) => console.log(text),
+  stderr: (text) => console.error(text),
+};
+
+export async function runCli(
+  args: string[],
+  options: RunCliOptions = {},
+): Promise<number> {
+  const deps: CliDependencies = {
+    ...defaultDependencies,
+    ...options.deps,
+  };
+  const io: CliIo = {
+    ...defaultIo,
+    ...options.io,
+  };
+
+  try {
+    const [command, ...rest] = args;
+
+    if (!command || command === "help" || command === "--help") {
+      io.stdout(HELP_TEXT);
+      return 0;
+    }
+
+    switch (command) {
+      case "doctor":
+        handleDoctor(rest, deps, io);
+        return 0;
+      case "chats":
+        handleChats(rest, deps, io);
+        return 0;
+      case "messages":
+        handleMessages(rest, deps, io);
+        return 0;
+      case "tail":
+        await handleTail(rest, deps, io);
+        return 0;
+      default:
+        throw new UsageError(`Unknown command: ${command}`);
+    }
+  } catch (error) {
+    if (error instanceof UsageError) {
+      io.stderr(error.message);
+      io.stderr("");
+      io.stderr(HELP_TEXT);
+      return 2;
+    }
+
+    if (error instanceof Error) {
+      io.stderr(error.message);
+    } else {
+      io.stderr(String(error));
+    }
+    return 1;
   }
 }
 
-function handleDoctor(args: string[]): void {
+export async function runMain(args = Bun.argv.slice(2)): Promise<void> {
+  const exitCode = await runCli(args);
+  if (exitCode !== 0) {
+    process.exit(exitCode);
+  }
+}
+
+function handleDoctor(
+  args: string[],
+  deps: CliDependencies,
+  io: CliIo,
+): void {
   if (args.includes("--help")) {
-    console.log(DOCTOR_HELP);
+    io.stdout(DOCTOR_HELP);
     return;
   }
 
-  const { values } = parseArgs({
+  const { values } = parseCliArgs<{
+    json: boolean;
+  }>({
     args,
     strict: true,
     allowPositionals: false,
@@ -118,17 +204,25 @@ function handleDoctor(args: string[]): void {
     },
   });
 
-  const report = inspectDatabase();
-  printOutput(report, values.json, formatDoctor(report));
+  const report = deps.inspectDatabase();
+  printOutput(report, values.json, deps.formatDoctor(report), io);
 }
 
-function handleChats(args: string[]): void {
+function handleChats(
+  args: string[],
+  deps: CliDependencies,
+  io: CliIo,
+): void {
   if (args.includes("--help")) {
-    console.log(CHATS_HELP);
+    io.stdout(CHATS_HELP);
     return;
   }
 
-  const { values } = parseArgs({
+  const { values } = parseCliArgs<{
+    limit?: string;
+    search?: string;
+    json: boolean;
+  }>({
     args,
     strict: true,
     allowPositionals: false,
@@ -146,21 +240,42 @@ function handleChats(args: string[]): void {
     },
   });
 
-  const chats = listChats({
+  const chats = deps.listChats({
     limit: parseOptionalInteger(values.limit, "--limit"),
     search: values.search,
   });
 
-  printOutput({ chats }, values.json, formatChats(chats));
+  printOutput({ chats }, values.json, deps.formatChats(chats), io);
 }
 
-function handleMessages(args: string[]): void {
+function handleMessages(
+  args: string[],
+  deps: CliDependencies,
+  io: CliIo,
+): void {
   if (args.includes("--help")) {
-    console.log(MESSAGES_HELP);
+    io.stdout(MESSAGES_HELP);
     return;
   }
 
-  const { values } = parseArgs({
+  const { values } = parseCliArgs<{
+    query?: string;
+    chat?: string;
+    "chat-id"?: string;
+    "chat-exact"?: string;
+    participant?: string;
+    "participant-exact"?: string;
+    from?: string;
+    to?: string;
+    "from-me": boolean;
+    incoming: boolean;
+    unread: boolean;
+    "has-attachments": boolean;
+    "after-rowid"?: string;
+    sort?: string;
+    limit?: string;
+    json: boolean;
+  }>({
     args,
     strict: true,
     allowPositionals: false,
@@ -222,7 +337,7 @@ function handleMessages(args: string[]): void {
   });
 
   const sort = parseSort(values.sort);
-  const result = searchMessages({
+  const result = deps.searchMessages({
     query: values.query,
     chat: values.chat,
     chatId: values["chat-id"],
@@ -240,16 +355,38 @@ function handleMessages(args: string[]): void {
     limit: parseOptionalInteger(values.limit, "--limit"),
   });
 
-  printOutput(result, values.json, formatMessages(result));
+  printOutput(result, values.json, deps.formatMessages(result), io);
 }
 
-async function handleTail(args: string[]): Promise<void> {
+async function handleTail(
+  args: string[],
+  deps: CliDependencies,
+  io: CliIo,
+): Promise<void> {
   if (args.includes("--help")) {
-    console.log(TAIL_HELP);
+    io.stdout(TAIL_HELP);
     return;
   }
 
-  const { values } = parseArgs({
+  const { values } = parseCliArgs<{
+    chat?: string;
+    "chat-id"?: string;
+    "chat-exact"?: string;
+    participant?: string;
+    "participant-exact"?: string;
+    from?: string;
+    to?: string;
+    "from-me": boolean;
+    incoming: boolean;
+    unread: boolean;
+    "has-attachments": boolean;
+    "after-rowid"?: string;
+    limit?: string;
+    "poll-interval-ms"?: string;
+    "max-polls"?: string;
+    once: boolean;
+    json: boolean;
+  }>({
     args,
     strict: true,
     allowPositionals: false,
@@ -335,7 +472,7 @@ async function handleTail(args: string[]): Promise<void> {
 
   let cursor =
     parseOptionalInteger(values["after-rowid"], "--after-rowid") ??
-    resolveTailCursor(baseOptions);
+    deps.resolveTailCursor(baseOptions);
   let pollCount = 0;
 
   const readyEvent: TailReadyEvent = {
@@ -343,10 +480,10 @@ async function handleTail(args: string[]): Promise<void> {
     cursor,
     pollIntervalMs,
   };
-  printEvent(readyEvent, values.json, formatTailReady(readyEvent));
+  printEvent(readyEvent, values.json, deps.formatTailReady(readyEvent), io);
 
   while (true) {
-    const batch = pollTailBatch({
+    const batch = deps.pollTailBatch({
       ...baseOptions,
       afterRowId: cursor ?? undefined,
       limit,
@@ -362,7 +499,12 @@ async function handleTail(args: string[]): Promise<void> {
         pollCount,
         messages: batch.messages,
       };
-      printEvent(batchEvent, values.json, formatTailBatch(batchEvent));
+      printEvent(
+        batchEvent,
+        values.json,
+        deps.formatTailBatch(batchEvent),
+        io,
+      );
     }
 
     if (values.once) {
@@ -372,7 +514,7 @@ async function handleTail(args: string[]): Promise<void> {
         pollCount,
         reason: "once",
       };
-      printEvent(doneEvent, values.json, formatTailDone(doneEvent));
+      printEvent(doneEvent, values.json, deps.formatTailDone(doneEvent), io);
       return;
     }
 
@@ -383,30 +525,40 @@ async function handleTail(args: string[]): Promise<void> {
         pollCount,
         reason: "max-polls",
       };
-      printEvent(doneEvent, values.json, formatTailDone(doneEvent));
+      printEvent(doneEvent, values.json, deps.formatTailDone(doneEvent), io);
       return;
     }
 
-    await Bun.sleep(pollIntervalMs);
+    await deps.sleep(pollIntervalMs);
   }
 }
 
-function printOutput(value: unknown, json: boolean, text: string): void {
+function printOutput(
+  value: unknown,
+  json: boolean,
+  text: string,
+  io: CliIo,
+): void {
   if (json) {
-    console.log(JSON.stringify(value, null, 2));
+    io.stdout(JSON.stringify(value, null, 2));
     return;
   }
 
-  console.log(text);
+  io.stdout(text);
 }
 
-function printEvent(value: unknown, json: boolean, text: string): void {
+function printEvent(
+  value: unknown,
+  json: boolean,
+  text: string,
+  io: CliIo,
+): void {
   if (json) {
-    console.log(JSON.stringify(value));
+    io.stdout(JSON.stringify(value));
     return;
   }
 
-  console.log(text);
+  io.stdout(text);
 }
 
 function parseOptionalInteger(
@@ -436,18 +588,28 @@ function parseSort(raw: string | undefined): "asc" | "desc" | undefined {
   throw new UsageError("--sort must be either asc or desc.");
 }
 
-main().catch((error) => {
-  if (error instanceof UsageError) {
-    console.error(error.message);
-    console.error("");
-    console.error(HELP_TEXT);
-    process.exit(2);
-  }
+function parseCliArgs<TValues extends Record<string, unknown>>(
+  options: Parameters<typeof parseArgs>[0],
+): Omit<ReturnType<typeof parseArgs>, "values"> & {
+  values: TValues;
+} {
+  try {
+    return parseArgs(options) as Omit<ReturnType<typeof parseArgs>, "values"> & {
+      values: TValues;
+    };
+  } catch (error) {
+    if (error instanceof UsageError) {
+      throw error;
+    }
 
-  if (error instanceof Error) {
-    console.error(error.message);
-  } else {
-    console.error(String(error));
+    if (error instanceof Error) {
+      throw new UsageError(error.message);
+    }
+
+    throw new UsageError(String(error));
   }
-  process.exit(1);
-});
+}
+
+if (import.meta.main) {
+  await runMain();
+}
